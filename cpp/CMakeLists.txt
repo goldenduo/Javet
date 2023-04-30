@@ -53,7 +53,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android")
         message(FATAL_ERROR "CMAKE_ANDROID_ARCH must be one of arm, arm64, x86, x86_64.")
     endif()
     # The target ABI version is set to 23 because pre-23 is no longer supported by V8 v9.7+.
-    set(CMAKE_SYSTEM_VERSION 23)
+    set(CMAKE_SYSTEM_VERSION 24)
     set(CMAKE_ANDROID_STL_TYPE c++_static)
     set(JAVA_RESOURCES_DIR ${CMAKE_SOURCE_DIR}/../android/javet-android/src/main/jniLibs/${CMAKE_ANDROID_ARCH_ABI})
 else()
@@ -113,12 +113,12 @@ if(DEFINED NODE_DIR)
         ${NODE_DIR}/deps/v8/include
         ${NODE_DIR}/src)
     list(APPEND importLibraries
-        base64 brotli cares histogram llhttp nghttp2 nghttp3 ngtcp2 openssl simdutf torque_base uvwasi
-        v8_base_without_compiler v8_compiler v8_init v8_initializers
-        v8_libbase v8_libplatform v8_snapshot v8_zlib zlib zlib_adler32_simd zlib_inflate_chunk_simd)
-    if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "(arm64|aarch64)")
+            base64 brotli cares histogram llhttp nghttp2 nghttp3 ngtcp2 openssl torque_base uvwasi
+            v8_base_without_compiler v8_compiler v8_init v8_initializers
+            v8_libbase v8_libplatform v8_snapshot v8_zlib zlib)
+    if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "(arm64|aarch64)" OR CMAKE_ANDROID_ARCH STREQUAL "arm64")
         list(APPEND importLibraries base64_neon64)
-    else()
+    elseif(NOT CMAKE_ANDROID_ARCH STREQUAL "arm")
         list(APPEND importLibraries base64_avx base64_avx2 base64_sse41 base64_sse42 base64_ssse3)
     endif()
     if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -126,16 +126,9 @@ if(DEFINED NODE_DIR)
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "(arm64|aarch64)")
         list(APPEND importLibraries node uv)
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
-        list(APPEND importLibraries node node_text_start uv)
+        list(APPEND importLibraries node uv)
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         list(APPEND importLibraries node uv)
-    endif()
-    if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64")
-        list(APPEND importLibraries zlib_arm_crc32)
-    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "(arm64|aarch64)")
-        list(APPEND importLibraries zlib_arm_crc32)
-    else()
-        list(APPEND importLibraries zlib_crc32_simd)
     endif()
     add_definitions(-DENABLE_NODE)
     set(JAVET_LIB_TYPE "node")
@@ -236,6 +229,20 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android
                 -llog -static-libgcc -static-libstdc++ "${libgcc}")
             target_link_libraries(JavetStatic PUBLIC -Wl,--whole-archive ${importLibraries} -Wl,--no-whole-archive
                 -llog -static-libgcc -static-libstdc++ "${libgcc}")
+        endif()
+        if(DEFINED NODE_DIR)
+            list(APPEND includeDirs
+                ${NODE_DIR}/out/Release/obj/gen/generate-bytecode-output-root
+                ${NODE_DIR}/out/Release/obj/gen/inspector-generated-output-root
+                ${NODE_DIR}/out/Release/obj/gen)
+            foreach(importLibrary ${importLibraries})
+                set_target_properties(${importLibrary} PROPERTIES IMPORTED_LOCATION ${NODE_DIR}/out/Release/lib${importLibrary}.a)
+            endforeach(importLibrary)
+            list(REMOVE_ITEM importLibraries v8_init)
+            target_link_libraries(Javet PUBLIC -Wl,--whole-archive ${importLibraries} -Wl,--no-whole-archive
+                v8_init -llog debug -static-libgcc -static-libstdc++ optimized "${libgcc}")
+            target_link_libraries(JavetStatic PUBLIC -Wl,--whole-archive ${importLibraries} -Wl,--no-whole-archive
+                v8_init -llog debug -static-libgcc -static-libstdc++ optimized "${libgcc}")
         endif()
     elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "(arm64|x86_64)")
         set(JAVET_LIB_SYSTEM "macos")
